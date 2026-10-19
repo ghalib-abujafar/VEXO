@@ -1,0 +1,703 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="live-page">
+
+  <!-- ── Main Layout: Side panel + Video area ── -->
+  <div class="live-layout">
+
+    <!-- ── Side Panel (Course Select) ── -->
+    <aside class="live-sidebar" id="liveSidebar">
+      <div class="sidebar-header">
+        <i class="bi bi-journal-bookmark-fill"></i>
+        <span data-i18n="live.choose_course"></span>
+      </div>
+      <div class="sidebar-body">
+        <select id="courseSelect" class="live-select"></select>
+      </div>
+
+      <!-- Start / Stop Button -->
+      <div class="sidebar-action">
+        <button id="cameraBtn" class="live-start-btn">
+          <i class="bi bi-play-fill" id="cameraBtnIcon"></i>
+          <span data-i18n="live.start_camera" id="cameraBtnText"></span>
+        </button>
+      </div>
+
+      <!-- Cheat recording indicator -->
+      <button id="simulateCheatBtn" type="button" class="live-cheat-indicator" disabled style="display:none;"
+        data-i18n="live.recording_clips">
+      </button>
+    </aside>
+
+    <!-- ── Video Area ── -->
+    <div class="live-video-area">
+
+      <!-- Mode Toggle (above video) -->
+      <div class="mode-toggle-wrap" id="controlsPanel">
+        <div class="mode-toggle" id="modeToggle">
+          <button type="button" class="mode-option active" data-mode="attendance" id="modeAttendance">
+            <i class="bi bi-clipboard-check-fill"></i>
+            <span data-i18n="live.mode_attendance"></span>
+          </button>
+          <button type="button" class="mode-option" data-mode="cheat" id="modeCheat">
+            <i class="bi bi-eye-fill"></i>
+            <span data-i18n="live.mode_cheat"></span>
+          </button>
+          <div class="mode-slider" id="modeSlider"></div>
+        </div>
+      </div>
+
+      <!-- Video Container -->
+      <div class="video-container" id="videoContainer">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+
+        <!-- Settings gear icon (Camera Select) -->
+        <button class="camera-settings-btn" id="cameraSettingsBtn" type="button" title="Camera Settings">
+          <i class="bi bi-gear-fill"></i>
+        </button>
+
+        <!-- Camera dropdown popup -->
+        <div class="camera-dropdown" id="cameraDropdown">
+          <div class="camera-dropdown-header">
+            <i class="bi bi-camera-video-fill"></i>
+            <span data-i18n="live.choose_camera"></span>
+          </div>
+          <select id="cameraSelect" class="live-select"></select>
+
+          <!-- Mirror Toggle -->
+          <div class="camera-dropdown-divider"></div>
+          <div class="mirror-toggle-row" id="mirrorToggleRow">
+            <div class="mirror-toggle-label">
+              <i class="bi bi-symmetry-horizontal"></i>
+              <span data-i18n="live.mirror_camera">Mirror Camera</span>
+            </div>
+            <label class="mirror-switch" for="mirrorToggle">
+              <input type="checkbox" id="mirrorToggle">
+              <span class="mirror-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Live indicator -->
+        <div class="live-badge" id="liveBadge" style="display:none;">
+          <span class="live-dot"></span>
+          LIVE
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Hidden mode select for JS compatibility -->
+  <select id="modeSelect" style="display:none;">
+    <option value="attendance" selected>Attendance</option>
+    <option value="cheat">Cheat Detection</option>
+  </select>
+
+  <div id="alertsStack" class="alerts-stack"></div>
+</div>
+
+<script>
+  const video = document.getElementById("video");
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+
+  const cameraBtn = document.getElementById("cameraBtn");
+  const cameraBtnIcon = document.getElementById("cameraBtnIcon");
+  const cameraBtnText = document.getElementById("cameraBtnText");
+  const modeSelect = document.getElementById("modeSelect");
+  const cameraSelect = document.getElementById("cameraSelect");
+  const simulateCheatBtn = document.getElementById("simulateCheatBtn");
+  const courseSelect = document.getElementById("courseSelect");
+  const controlsPanel = document.getElementById("controlsPanel");
+  const liveBadge = document.getElementById("liveBadge");
+
+  // Mode toggle buttons
+  const modeAttendance = document.getElementById("modeAttendance");
+  const modeCheat = document.getElementById("modeCheat");
+  const modeToggle = document.getElementById("modeToggle");
+  const modeSlider = document.getElementById("modeSlider");
+
+  // Camera settings
+  const cameraSettingsBtn = document.getElementById("cameraSettingsBtn");
+  const mirrorToggle = document.getElementById("mirrorToggle");
+  const cameraDropdown = document.getElementById("cameraDropdown");
+
+  let stream = null;
+  let interval = null;
+  let selectedCameraId = null;
+
+  let isRunning = false;
+  let isUploadingCheat = false;
+  let lastAutoCheatAt = 0;
+
+  let isTickBusy = false;
+  let cheatRecorder = null;
+  let cheatChunks = [];
+  let cheatRecordingTimer = null;
+  let isUploadingClip = false;
+
+  const CHEAT_CLIP_MS = 10 * 1000; // 10 seconds
+
+  function tt(key, vars) { return (window.t ? window.t(key, vars) : key); }
+
+  // ── Mode Toggle Logic ──
+  function positionModeSlider() {
+    const activeBtn = modeToggle.querySelector(".mode-option.active");
+    if (!activeBtn || !modeSlider) return;
+    const toggleRect = modeToggle.getBoundingClientRect();
+    const btnRect = activeBtn.getBoundingClientRect();
+    modeSlider.style.width = btnRect.width + "px";
+    modeSlider.style.transform = `translateX(${btnRect.left - toggleRect.left}px)`;
+  }
+
+  function setMode(mode) {
+    modeSelect.value = mode;
+    modeToggle.querySelectorAll(".mode-option").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.mode === mode);
+    });
+    positionModeSlider();
+    updateCheatUI();
+  }
+
+  modeAttendance.addEventListener("click", () => setMode("attendance"));
+  modeCheat.addEventListener("click", () => setMode("cheat"));
+
+  // Position slider on load — retry until text is rendered
+  function initSlider() {
+    positionModeSlider();
+    // Retry a few times to catch late font/translation loads
+    setTimeout(positionModeSlider, 100);
+    setTimeout(positionModeSlider, 300);
+    setTimeout(positionModeSlider, 600);
+    setTimeout(positionModeSlider, 1200);
+  }
+
+  requestAnimationFrame(initSlider);
+  window.addEventListener("resize", positionModeSlider);
+
+  // Re-position when translations finish (i18n changes text widths)
+  const _origTranslateDom = window.translateDom;
+  if (_origTranslateDom) {
+    window.translateDom = function () {
+      _origTranslateDom.apply(this, arguments);
+      requestAnimationFrame(positionModeSlider);
+    };
+  }
+
+  // ── Camera Settings Dropdown ──
+  let dropdownOpen = false;
+  cameraSettingsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    dropdownOpen = !dropdownOpen;
+    cameraDropdown.classList.toggle("open", dropdownOpen);
+    cameraSettingsBtn.classList.toggle("active", dropdownOpen);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!cameraDropdown.contains(e.target) && !cameraSettingsBtn.contains(e.target)) {
+      dropdownOpen = false;
+      cameraDropdown.classList.remove("open");
+      cameraSettingsBtn.classList.remove("active");
+    }
+  });
+
+  // ── Mirror Toggle Logic ──
+  let isMirrored = localStorage.getItem("vexo_camera_mirror") === "true";
+
+  function applyMirror() {
+    video.classList.toggle("mirrored", isMirrored);
+    mirrorToggle.checked = isMirrored;
+    localStorage.setItem("vexo_camera_mirror", isMirrored);
+  }
+
+  applyMirror();
+
+  mirrorToggle.addEventListener("change", () => {
+    isMirrored = mirrorToggle.checked;
+    applyMirror();
+  });
+
+  // ── Controls panel visibility ──
+  function hideControlsPanel() {
+    if (!controlsPanel) return;
+    controlsPanel.style.opacity = "0";
+    controlsPanel.style.pointerEvents = "none";
+  }
+  function showControlsPanel() {
+    if (!controlsPanel) return;
+    controlsPanel.style.opacity = "1";
+    controlsPanel.style.pointerEvents = "auto";
+  }
+
+  function stopStream() {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  function stopRecognitionLoop() {
+    if (interval) clearInterval(interval);
+    interval = null;
+  }
+
+  function pushAlert(message, type = "info", ttl = 3000) {
+    const stack = document.getElementById("alertsStack");
+    if (!stack) return;
+
+    const el = document.createElement("div");
+    el.className = `alert alert-${type} d-flex align-items-center justify-content-between`;
+    el.setAttribute("role", "alert");
+
+    el.innerHTML = `
+    <div class="me-2">${message}</div>
+    <button type="button" class="btn-close btn-close-white ms-2" aria-label="Close"></button>
+  `;
+
+    el.querySelector("button").addEventListener("click", () => removeAlert(el));
+    stack.appendChild(el);
+
+    const t = setTimeout(() => removeAlert(el), ttl);
+    el.dataset.timer = String(t);
+  }
+
+  function removeAlert(el) {
+    if (!el) return;
+    const t = el.dataset.timer;
+    if (t) clearTimeout(Number(t));
+
+    el.style.transition = "opacity .25s ease, transform .25s ease";
+    el.style.opacity = "0";
+    el.style.transform = "translateX(-6px)";
+    setTimeout(() => el.remove(), 260);
+  }
+
+  const alertCooldownMap = new Map();
+  function pushAlertOnce(key, message, type = "info", ttl = 3000, cooldown = 60000) {
+    const now = Date.now();
+    const last = alertCooldownMap.get(key) || 0;
+    if (now - last < cooldown) return;
+    alertCooldownMap.set(key, now);
+    pushAlert(message, type, ttl);
+  }
+
+  function isCheatModeSelected() {
+    return modeSelect && modeSelect.value === "cheat";
+  }
+
+  function updateCheatUI() {
+    const show = isRunning && isCheatModeSelected();
+    if (!simulateCheatBtn) return;
+    simulateCheatBtn.style.display = show ? "inline-flex" : "none";
+    simulateCheatBtn.disabled = true;
+  }
+
+  async function getJson(url) {
+    const res = await fetch(url, {
+      credentials: "same-origin",
+      headers: { "Accept": "application/json" }
+    });
+    if (!res.ok) throw new Error("Request failed");
+    return res.json();
+  }
+
+  async function postJson(url, body) {
+    const res = await fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify(body || {})
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data };
+  }
+
+  async function requestPermissionOnce() {
+    const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
+    tmp.getTracks().forEach(t => t.stop());
+  }
+
+  async function loadCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cams = devices.filter(d => d.kind === "videoinput");
+
+    cameraSelect.innerHTML = "";
+    cams.forEach((cam, i) => {
+      const opt = document.createElement("option");
+      opt.value = cam.deviceId;
+      opt.text = cam.label || tt("live.camera_n", { n: (i + 1) });
+      cameraSelect.appendChild(opt);
+    });
+
+    if (cams.length) {
+      selectedCameraId = cams[0].deviceId;
+      cameraSelect.value = selectedCameraId;
+      await startPreview();
+    } else {
+      pushAlertOnce("no_cam", tt("live.no_camera_found"), "danger", 3000, 3000);
+    }
+  }
+
+  async function startPreview() {
+    stopStream();
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined,
+        frameRate: { ideal: 12 }
+      }
+    });
+    video.srcObject = stream;
+  }
+
+  cameraSelect.addEventListener("change", async () => {
+    if (isRunning) {
+      pushAlertOnce("stop_to_change_cam", tt("live.stop_to_change_camera"), "warning", 3000, 2000);
+      cameraSelect.value = selectedCameraId;
+      return;
+    }
+    selectedCameraId = cameraSelect.value;
+    try {
+      await startPreview();
+    } catch (e) {
+      console.error(e);
+      pushAlertOnce("cam_switch_fail", tt("live.failed_selected_camera"), "danger", 3000, 2000);
+    }
+  });
+
+  async function loadCourses() {
+    try {
+      const courses = await getJson("/teacher/my_courses_json");
+
+      let html = `<option value="0" data-i18n="live.choose_course_opt">-- Select course --</option>`;
+      if (Array.isArray(courses) && courses.length) {
+        html += courses.map(c =>
+          `<option value="${c.id}">${c.name} - ${c.section}</option>`
+        ).join("");
+        courseSelect.innerHTML = html;
+      } else {
+        courseSelect.innerHTML = `<option value="0">${tt("live.no_courses")}</option>`;
+      }
+
+      if (window.translateDom) window.translateDom();
+    } catch (e) {
+      courseSelect.innerHTML = `<option value="0">${tt("live.courses_load_failed")}</option>`;
+    }
+  }
+
+  function getSelectedCourseId() {
+    const v = parseInt(courseSelect.value || "0", 10);
+    return v > 0 ? v : 0;
+  }
+
+  (async () => {
+    try {
+      await loadCourses();
+      await requestPermissionOnce();
+      await loadCameras();
+      updateCheatUI();
+    } catch (e) {
+      console.error(e);
+      pushAlertOnce("perm", tt("live.check_permissions"), "danger", 3000, 3000);
+    }
+  })();
+
+  function drawFrameToCanvasScaled(targetW = 640) {
+    const vw = video.videoWidth || 640;
+    const vh = video.videoHeight || 480;
+
+    const scale = targetW / vw;
+    const w = Math.round(vw * scale);
+    const h = Math.round(vh * scale);
+
+    canvas.width = w;
+    canvas.height = h;
+    ctx.drawImage(video, 0, 0, w, h);
+  }
+
+  function getFrameBase64(quality = 0.75) {
+    drawFrameToCanvasScaled(640);
+    return canvas.toDataURL("image/jpeg", quality);
+  }
+
+  function getSupportedMimeType() {
+    const types = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+      "video/mp4"
+    ];
+
+    for (const t of types) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) {
+        return t;
+      }
+    }
+    return "";
+  }
+
+  async function uploadCheatClip(blob) {
+    if (!blob || !blob.size || isUploadingClip) return;
+
+    isUploadingClip = true;
+
+    try {
+      const courseId = getSelectedCourseId();
+      if (!courseId) return;
+
+      const ext = blob.type.includes("mp4") ? "mp4" : "webm";
+      const fd = new FormData();
+      fd.append("video", blob, `clip.${ext}`);
+      fd.append("course_id", String(courseId));
+      fd.append("camera_id", selectedCameraId || "");
+      fd.append("message", "Auto 1-minute clip");
+
+      const res = await fetch("/upload_cheat_video", {
+        method: "POST",
+        credentials: "same-origin",
+        body: fd
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data.status !== "ok") {
+        pushAlertOnce("clip_upload_err", "Failed to upload cheat clip", "danger", 3000, 1500);
+        return;
+      }
+
+      if (data.result === "cheat") {
+        pushAlertOnce(
+          "clip_cheat_" + String(data.predicted_label),
+          `Cheating clip saved: ${data.predicted_label} (${Number(data.confidence || 0).toFixed(2)})`,
+          "danger",
+          4000,
+          1500
+        );
+      } else {
+        pushAlertOnce(
+          "clip_normal",
+          `Clip analyzed: normal (${Number(data.confidence || 0).toFixed(2)})`,
+          "info",
+          2500,
+          1000
+        );
+      }
+    } catch (e) {
+      console.error(e);
+      pushAlertOnce("clip_upload_catch", "Error while uploading clip", "danger", 3000, 1500);
+    } finally {
+      isUploadingClip = false;
+    }
+  }
+
+  async function stopAndUploadCurrentClip() {
+    return new Promise((resolve) => {
+      if (!cheatRecorder || cheatRecorder.state === "inactive") {
+        resolve();
+        return;
+      }
+
+      const localRecorder = cheatRecorder;
+      localRecorder.onstop = async () => {
+        try {
+          const blob = new Blob(cheatChunks, { type: localRecorder.mimeType || "video/webm" });
+          cheatChunks = [];
+          await uploadCheatClip(blob);
+        } finally {
+          resolve();
+        }
+      };
+
+      localRecorder.stop();
+    });
+  }
+
+  async function startCheatClipRecorder() {
+    if (!stream) return;
+    if (!isCheatModeSelected()) return;
+
+    const mimeType = getSupportedMimeType();
+    const options = mimeType ? { mimeType } : undefined;
+
+    cheatChunks = [];
+    cheatRecorder = new MediaRecorder(stream, options);
+
+    cheatRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        cheatChunks.push(e.data);
+      }
+    };
+
+    cheatRecorder.start();
+
+    simulateCheatBtn.style.display = "inline-flex";
+    simulateCheatBtn.disabled = true;
+    simulateCheatBtn.textContent = "Recording cheat clips...";
+
+    cheatRecordingTimer = setInterval(async () => {
+      if (!isRunning || !isCheatModeSelected()) return;
+
+      if (cheatRecorder && cheatRecorder.state === "recording") {
+        await stopAndUploadCurrentClip();
+      }
+
+      if (isRunning && isCheatModeSelected() && stream) {
+        cheatChunks = [];
+        const nextMime = getSupportedMimeType();
+        const nextOptions = nextMime ? { mimeType: nextMime } : undefined;
+
+        cheatRecorder = new MediaRecorder(stream, nextOptions);
+        cheatRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) cheatChunks.push(e.data);
+        };
+        cheatRecorder.start();
+      }
+    }, CHEAT_CLIP_MS);
+  }
+
+  async function stopCheatClipRecorder() {
+    if (cheatRecordingTimer) {
+      clearInterval(cheatRecordingTimer);
+      cheatRecordingTimer = null;
+    }
+
+    if (cheatRecorder && cheatRecorder.state !== "inactive") {
+      await stopAndUploadCurrentClip();
+    }
+
+    cheatRecorder = null;
+    cheatChunks = [];
+
+    simulateCheatBtn.style.display = "none";
+    simulateCheatBtn.disabled = true;
+    simulateCheatBtn.textContent = "Recording cheat clips...";
+  }
+
+  async function tickRecognition() {
+    if (!stream || isTickBusy) return;
+    isTickBusy = true;
+
+    const mode = modeSelect ? modeSelect.value : "attendance";
+    const course_id = getSelectedCourseId();
+
+    if (!course_id) {
+      pushAlertOnce("need_course", tt("live.need_course"), "warning", 2500, 2000);
+      isTickBusy = false;
+      return;
+    }
+
+    try {
+      const imgBase64 = getFrameBase64(0.6);
+
+      const { ok, data: out } = await postJson("/recognize_frame", {
+        img: imgBase64,
+        mode,
+        course_id
+      });
+
+      if (!ok || !out) return;
+
+      if (out.status === "idle" || out.status === "no_face" || out.status === "no_data") {
+        return;
+      }
+      if (out.status === "error") {
+        pushAlertOnce("err:" + String(out.message || ""), tt("live.error", { msg: (out.message || "") }), "danger", 3000, 2000);
+        return;
+      }
+
+      if (mode === "cheat") {
+        return;
+      }
+
+      if (mode === "attendance" && out.status === "success") {
+        const rec = out.recognized || [];
+        if (!rec.length) return;
+
+        const first = rec[0];
+        const msg = first.updated
+          ? tt("live.att_saved", { name: first.name, score: Number(first.score).toFixed(2) })
+          : tt("live.att_seen_wait", { name: first.name });
+
+        pushAlertOnce(
+          "att:" + first.name + ":" + String(!!first.updated),
+          msg,
+          first.updated ? "success" : "info",
+          3000,
+          60000
+        );
+      }
+
+    } catch (e) {
+    } finally {
+      isTickBusy = false;
+    }
+  }
+
+  function startRecognitionLoop() {
+    stopRecognitionLoop();
+    interval = setInterval(tickRecognition, 650);
+  }
+
+  cameraBtn.addEventListener("click", async () => {
+    if (!isRunning) {
+      const course_id = getSelectedCourseId();
+      if (!course_id) {
+        pushAlertOnce("need_course_btn", tt("live.need_course"), "warning", 2500, 2000);
+        return;
+      }
+
+      if (!stream) await startPreview();
+
+      startRecognitionLoop();
+
+      isRunning = true;
+      updateCheatUI();
+
+      if (isCheatModeSelected()) {
+        await startCheatClipRecorder();
+      }
+
+      pushAlertOnce("cam_started", tt("live.camera_started"), "success", 2500, 1500);
+
+      // Update button to stop state
+      cameraBtnIcon.className = "bi bi-stop-fill";
+      cameraBtnText.setAttribute("data-i18n", "live.stop_camera");
+      cameraBtnText.textContent = tt("live.stop_camera");
+      cameraBtn.classList.add("is-running");
+
+      // Show live badge
+      liveBadge.style.display = "flex";
+
+      // Lock mode toggle
+      modeToggle.classList.add("locked");
+
+    } else {
+      await stopCheatClipRecorder();
+      stopRecognitionLoop();
+      stopStream();
+
+      isRunning = false;
+      updateCheatUI();
+
+      // Update button to start state
+      cameraBtnIcon.className = "bi bi-play-fill";
+      cameraBtnText.setAttribute("data-i18n", "live.start_camera");
+      cameraBtnText.textContent = tt("live.start_camera");
+      cameraBtn.classList.remove("is-running");
+
+      // Hide live badge
+      liveBadge.style.display = "none";
+
+      // Unlock mode toggle
+      modeToggle.classList.remove("locked");
+
+      pushAlertOnce("cam_stopped", tt("live.camera_stopped"), "info", 2500, 1500);
+    }
+
+    if (window.translateDom) window.translateDom();
+  }); 
+</script>
+
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="hero-section">
+
+  <!-- Logo -->
+  <img src="{{ url_for('static', filename='image/vexo.png') }}" alt="VEXO" class="hero-logo">
+
+  <!-- Title -->
+  <div class="hero-title">VEXO</div>
+
+  <!-- Subtitle -->
+  <p class="hero-subtitle" data-i18n="home.subtitle"></p>
+
+  <!-- Feature Pills -->
+  <div class="features-row">
+    <div class="feature-pill">
+      <span class="pill-icon"><i class="bi bi-bullseye"></i></span>
+      <span data-i18n="home.feature1"></span>
+    </div>
+    <div class="feature-pill">
+      <span class="pill-icon"><i class="bi bi-bar-chart-fill"></i></span>
+      <span data-i18n="home.feature2"></span>
+    </div>
+    <div class="feature-pill">
+      <span class="pill-icon"><i class="bi bi-lightning-charge-fill"></i></span>
+      <span data-i18n="home.feature3"></span>
+    </div>
+  </div>
+
+  <!-- Action Cards -->
+  {% set u = session.get('user') or {} %}
+  {% set role = u.get('role') %}
+
+  <div class="actions-grid">
+    {% if role == "teacher" %}
+
+    <a href="{{ url_for('recognize_live') }}" class="action-link act-camera">
+      <span class="action-icon"><i class="bi bi-camera-video-fill"></i></span>
+      <span class="action-text" data-i18n="home.open_camera"></span>
+    </a>
+
+    <a href="{{ url_for('teacher_courses') }}" class="action-link act-courses">
+      <span class="action-icon"><i class="bi bi-book-fill"></i></span>
+      <span class="action-text" data-i18n="home.courses"></span>
+    </a>
+
+    <a href="{{ url_for('course_students_page') }}" class="action-link act-students">
+      <span class="action-icon"><i class="bi bi-people-fill"></i></span>
+      <span class="action-text" data-i18n="home.manage_users"></span>
+    </a>
+
+    <a href="{{ url_for('attendance') }}" class="action-link act-attendance">
+      <span class="action-icon"><i class="bi bi-calendar-check-fill"></i></span>
+      <span class="action-text" data-i18n="home.today_report"></span>
+    </a>
+
+    <a href="{{ url_for('cheat_review') }}" class="action-link act-cheat">
+      <span class="action-icon"><i class="bi bi-exclamation-triangle-fill"></i></span>
+      <span class="action-text" data-i18n="home.cheat_review"></span>
+    </a>
+
+    {% elif role == "student" %}
+
+    <a href="{{ url_for('student_courses') }}" class="action-link act-courses">
+      <span class="action-icon"><i class="bi bi-book-fill"></i></span>
+      <span class="action-text" data-i18n="home.student_courses"></span>
+    </a>
+
+    <a href="{{ url_for('my_attendance_history') }}" class="action-link act-attendance">
+      <span class="action-icon"><i class="bi bi-calendar-check-fill"></i></span>
+      <span class="action-text" data-i18n="home.my_attendance"></span>
+    </a>
+
+    {% elif role == "admin" %}
+
+    <a href="{{ url_for('admin_dashboard') }}" class="action-link act-admin">
+      <span class="action-icon"><i class="bi bi-shield-lock-fill"></i></span>
+      <span class="action-text" data-i18n="nav.admin_panel"></span>
+    </a>
+
+    {% else %}
+
+    <a href="{{ url_for('login') }}" class="action-link act-login">
+      <span class="action-icon"><i class="bi bi-lock-fill"></i></span>
+      <span class="action-text" data-i18n="auth.login"></span>
+    </a>
+
+    <a href="{{ url_for('register') }}" class="action-link act-courses">
+      <span class="action-icon"><i class="bi bi-stars"></i></span>
+      <span class="action-text" data-i18n="register.submit"></span>
+    </a>
+
+    {% endif %}
+  </div>
+
+</div>
+
+{% endblock %}

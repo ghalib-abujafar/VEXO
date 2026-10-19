@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <h3 class="m-0" data-i18n="myatt.title"></h3>
+  </div>
+
+  <form id="courseForm" method="get" class="d-flex justify-content-center gap-2 mb-4 flex-wrap">
+
+    <select name="course_id" id="courseSelect" class="form-select" style="max-width:320px;" required>
+      <option value="" data-i18n="myatt.choose_course">-- Select course --</option>
+      {% for c in courses %}
+      {% set cid = c.id | int %}
+      <option value="{{ cid }}" {% if course_id==cid %}selected{% endif %}>
+        {{ c.name }} - {{ c.section }}
+      </option>
+      {% endfor %}
+    </select>
+
+    <noscript>
+      <button class="btn btn-primary" type="submit" data-i18n="myatt.show">Show</button>
+    </noscript>
+  </form>
+
+  {% if rows %}
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover text-center align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th data-i18n="myatt.date"></th>
+          <th data-i18n="myatt.first_seen"></th>
+          <th data-i18n="myatt.last_seen"></th>
+          <th data-i18n="myatt.duration"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="fw-bold">{{ r.date }}</td>
+          <td>{{ r.first_seen }}</td>
+          <td>{{ r.last_seen }}</td>
+          <td><span class="badge bg-success duration">{{ r.duration_minutes }}</span> </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% elif course_id %}
+  <div class="alert alert-info text-center" data-i18n="myatt.none"></div>
+  {% else %}
+  <div class="alert alert-secondary text-center" data-i18n="myatt.pick_course"></div>
+  {% endif %}
+
+</div>
+<script>
+  function minutesToHHMM(minutes) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+  }
+
+  document.querySelectorAll(".duration").forEach(el => {
+    const minutes = parseInt(el.textContent.trim());
+    el.textContent = minutesToHHMM(minutes);
+  });
+
+  // Auto-submit when course is selected
+  document.getElementById('courseSelect').addEventListener('change', function() {
+    if (this.value) {
+      document.getElementById('courseForm').submit();
+    }
+  });
+</script>
+{% endblock %}

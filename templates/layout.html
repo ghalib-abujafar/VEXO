@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html id="docRoot">
+
+<head>
+  <script>
+    // Apply saved theme ASAP to prevent flash of wrong theme.
+    (function () { var t = localStorage.getItem("vexo_theme"); if (t === "light") document.documentElement.setAttribute("data-theme", "light"); })();
+  </script>
+  <meta charset="UTF-8">
+  <title data-i18n="app.title">VEXO</title>
+
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='image/vexo.png') }}">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <meta name="csrf-token" content="{{ csrf_token() if csrf_token is defined else '' }}">
+
+  <style>
+    html:not([data-i18n-ready="1"]) body {
+      visibility: hidden;
+    }
+  </style>
+
+  <script>
+    (function () {
+      const key = "lang";
+      const lang = localStorage.getItem(key) || "ar";
+
+      document.documentElement.setAttribute("lang", lang);
+      document.documentElement.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+
+      const bs = document.getElementById("bsCss");
+      if (bs) {
+        bs.href = (lang === "ar")
+          ? "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css"
+          : "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css";
+      }
+    })();
+  </script>
+
+  <link id="bsCss" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body class="app-bg">
+
+  <nav class="navbar navbar-expand-lg glass-nav">
+    <div class="container-fluid">
+
+      <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="{{ url_for('index') }}">
+        <img src="{{ url_for('static', filename='image/vexo.png') }}" alt="VEXO" height="36" class="rounded">
+        <span data-i18n="app.title">VEXO</span>
+      </a>
+
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="mainNav">
+
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0 gap-lg-2">
+          {% if session.get('user') and session['user']['role'] == 'teacher' %}
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('recognize_live') }}"><i class="bi bi-camera-video-fill"></i> <span
+                data-i18n="nav.camera">Camera</span></a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('teacher_courses') }}"><i class="bi bi-journal-bookmark-fill"></i>
+              <span data-i18n="nav.courses">Courses</span></a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('course_students_page') }}"><i class="bi bi-people-fill"></i> <span
+                data-i18n="nav.students">Students</span></a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('attendance') }}"><i class="bi bi-clipboard-check-fill"></i> <span
+                data-i18n="nav.attendance">Attendance</span></a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('cheat_review') }}"><i class="bi bi-eye-fill"></i>
+              <span data-i18n="nav.cheat_review">Cheating Review</span></a>
+          </li>
+          {% endif %}
+
+          {% if session.get('user') and session['user']['role'] == 'admin' %}
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('admin_dashboard') }}"><i class="bi bi-shield-lock-fill"></i> <span
+                data-i18n="nav.admin_panel">Admin Panel</span></a>
+          </li>
+          {% endif %}
+
+          {% if session.get('user') and session['user']['role'] == 'student' %}
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('my_attendance_history') }}"><i class="bi bi-calendar-check-fill"></i>
+              <span data-i18n="nav.my_days">My Days</span></a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('student_courses') }}"><i class="bi bi-book-fill"></i> <span
+                data-i18n="nav.courses">Courses</span></a>
+          </li>
+          {% endif %}
+
+        </ul>
+
+        <div class="d-flex align-items-center gap-2">
+
+          <button id="langBtn" class="btn btn-outline-light btn-sm" type="button" aria-label="Toggle language">
+            EN
+          </button>
+
+          <button id="themeBtn" class="btn btn-outline-light btn-sm" type="button" aria-label="Toggle theme">
+            <i class="bi bi-sun-fill"></i>
+          </button>
+
+          {% if not session.get('user') %}
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('login') }}">
+            <span data-i18n="nav.login">Login</span>
+          </a>
+          {% endif %}
+
+          {% if session.get('user') %}
+          <ul class="navbar-nav ms-2">
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle d-flex align-items-center gap-1" id="user" href="#" role="button"
+                data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-person-circle"></i> {{ session['user'].get('display_name') or
+                session['user'].get('username') or '-' }}
+              </a>
+
+              <ul class="dropdown-menu dropdown-menu-end text-end shadow">
+                <li class="dropdown-header fw-bold">
+                  {{ session['user'].get('display_name') or session['user'].get('username') or '-' }}
+                </li>
+
+                <li>
+                  <span class="dropdown-item-text">
+                    <i class="bi bi-person-badge-fill"></i> <span data-i18n="user.role">Role:</span>
+                    <strong>
+                      {% if session['user']['role'] == 'teacher' %}
+                      <span data-i18n="user.teacher">Teacher</span>
+                      {% elif session['user']['role'] == 'admin' %}
+                      <span data-i18n="user.admin">Admin</span>
+                      {% else %}
+                      <span data-i18n="user.student">Student</span>
+                      {% endif %}
+                    </strong>
+                  </span>
+                </li>
+
+                {% if session['user'].get('student_id') %}
+                <li>
+                  <span class="dropdown-item-text">
+                    <i class="bi bi-mortarboard-fill"></i> <span data-i18n="user.student_id">Student ID:</span>
+                    <strong>{{ session['user']['student_id'] }}</strong>
+                  </span>
+                </li>
+                {% endif %}
+
+                <li>
+                  <hr class="dropdown-divider">
+                </li>
+
+                <li>
+                  <a class="dropdown-item text-danger fw-bold" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> <span data-i18n="nav.logout">Logout</span>
+                  </a>
+                </li>
+              </ul>
+            </li>
+          </ul>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="mb-3">
+      {% for category, message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert" data-i18n-flash="{{ message }}">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      // Translate flash alerts using the i18n dictionary
+      function translateFlashAlerts() {
+        document.querySelectorAll("[data-i18n-flash]").forEach(el => {
+          const key = el.getAttribute("data-i18n-flash");
+          if (window.__dict && window.__dict[key]) {
+            // Replace text content but keep the close button
+            const closeBtn = el.querySelector(".btn-close");
+            el.textContent = window.__dict[key];
+            if (closeBtn) el.appendChild(closeBtn);
+          }
+        });
+      }
+
+      // Run after i18n is loaded
+      const checkAndTranslate = () => {
+        if (window.__dict) {
+          translateFlashAlerts();
+        } else {
+          setTimeout(checkAndTranslate, 50);
+        }
+      };
+      checkAndTranslate();
+
+      // Auto-dismiss alerts
+      setTimeout(() => {
+        document.querySelectorAll(".alert").forEach(a => {
+          a.classList.remove("show");
+          a.classList.add("hide");
+          setTimeout(() => a.remove(), 400);
+        });
+      }, 3500);
+    });
+  </script>
+
+  <script>
+    const LANG_KEY = "lang";
+    const DEFAULT_LANG = "en";
+
+    async function loadDict(lang) {
+      const res = await fetch(`/static/i18n/${lang}.json`, {
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+      if (!res.ok) {
+        return {};
+      }
+      return res.json();
+    }
+
+    function format(str, vars = {}) {
+      return String(str).replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? `{${k}}`));
+    }
+
+    window.t = (key, vars = {}) => {
+      const val = (window.__dict && window.__dict[key]) ? window.__dict[key] : key;
+      return format(val, vars);
+    };
+
+    function applyDirAndBootstrap(lang) {
+      const root = document.getElementById("docRoot");
+      const bsCss = document.getElementById("bsCss");
+
+      if (lang === "ar") {
+        root.lang = "ar";
+        root.dir = "rtl";
+        bsCss.href = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css";
+        document.body.classList.remove("text-start");
+        document.body.classList.add("text-end");
+      } else {
+        root.lang = "en";
+        root.dir = "ltr";
+        bsCss.href = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css";
+        document.body.classList.remove("text-end");
+        document.body.classList.add("text-start");
+      }
+    }
+
+    function translateDom() {
+      document.querySelectorAll("[data-i18n]").forEach(el => {
+        const key = el.getAttribute("data-i18n");
+        el.textContent = window.t(key);
+      });
+
+      document.querySelectorAll("[data-i18n-attr]").forEach(el => {
+        const spec = el.getAttribute("data-i18n-attr");
+        const [attr, key] = (spec || "").split(":");
+        if (attr && key) {
+          el.setAttribute(attr, window.t(key));
+        }
+      });
+    }
+
+    window.translateDom = translateDom;
+
+    async function setLang(lang) {
+      localStorage.setItem(LANG_KEY, lang);
+      window.__dict = await loadDict(lang);
+
+      applyDirAndBootstrap(lang);
+      translateDom();
+
+      document.documentElement.dataset.i18nReady = "1";
+
+      const btn = document.getElementById("langBtn");
+      if (btn) {
+        btn.textContent = (lang === "ar") ? "EN" : "AR";
+      }
+    }
+
+    document.getElementById("langBtn").addEventListener("click", async () => {
+      const current = localStorage.getItem(LANG_KEY) || DEFAULT_LANG;
+      const next = (current === "ar") ? "en" : "ar";
+      await setLang(next);
+    });
+
+    (async () => {
+      const lang = localStorage.getItem(LANG_KEY) || DEFAULT_LANG;
+      await setLang(lang);
+    })();
+
+    // ── Theme Toggle (Dark / Light) ──
+    const THEME_KEY = "vexo_theme";
+
+    function applyTheme(theme) {
+      const root = document.documentElement;
+      const btn = document.getElementById("themeBtn");
+
+      if (theme === "light") {
+        root.setAttribute("data-theme", "light");
+        if (btn) btn.innerHTML = '<i class="bi bi-moon-fill"></i>';
+      } else {
+        root.removeAttribute("data-theme");
+        if (btn) btn.innerHTML = '<i class="bi bi-sun-fill"></i>';
+      }
+
+      localStorage.setItem(THEME_KEY, theme);
+    }
+
+    document.getElementById("themeBtn").addEventListener("click", () => {
+      const current = localStorage.getItem(THEME_KEY) || "dark";
+      applyTheme(current === "dark" ? "light" : "dark");
+    });
+
+    // Apply saved theme immediately.
+    applyTheme(localStorage.getItem(THEME_KEY) || "dark");
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>

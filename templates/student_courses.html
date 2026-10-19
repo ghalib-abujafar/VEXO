@@ -1,0 +1,139 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container py-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+    <h3 class="m-0"><i class="bi bi-book-fill"></i> <span data-i18n="student_courses.title">Courses</span></h3>
+    <span class="text-muted small" data-i18n="student_courses.subtitle">Select a course and request to join</span>
+  </div>
+
+  {% if courses|length == 0 %}
+    <div class="alert alert-info text-center" data-i18n="student_courses.none">
+      No courses available right now.
+    </div>
+  {% else %}
+    <!-- Search Bar -->
+    <div class="mb-3">
+      <div class="position-relative">
+        <i class="bi bi-search position-absolute" style="top:50%;transform:translateY(-50%);inset-inline-start:14px;color:var(--muted);font-size:1rem;pointer-events:none;"></i>
+        <input
+          type="text"
+          id="courseSearch"
+          class="form-control"
+          style="padding-inline-start:40px;padding-inline-end:14px;"
+          data-i18n-attr="placeholder:student_courses.search_ph"
+          placeholder="Search by course or teacher name..."
+          autocomplete="off"
+        >
+      </div>
+    </div>
+
+    <div id="noResults" class="alert alert-info text-center d-none" data-i18n="student_courses.no_results">
+      No courses match your search.
+    </div>
+
+    <div class="row g-3" id="coursesGrid">
+      {% for c in courses %}
+        <div class="col-12 col-md-6 col-lg-4 course-item"
+             data-course="{{ c['course_name']|lower }}"
+             data-teacher="{{ c['teacher_name']|lower }}"
+             data-section="{{ c['section']|lower }}">
+          <div class="card h-100 border-0 shadow-sm">
+
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start">
+                <div>
+                  <h5 class="card-title mb-1">{{ c["course_name"] }}</h5>
+                  <div class="text-muted small">
+                    <span data-i18n="student_courses.section">Section:</span>
+                    <b>{{ c["section"] }}</b>
+                  </div>
+                </div>
+
+                {% if c["is_joined"] == 1 %}
+                  <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> <span data-i18n="student_courses.status_joined">Joined</span></span>
+                {% elif c["request_status"] == "pending" %}
+                  <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split"></i> <span data-i18n="student_courses.status_pending">Pending</span></span>
+                {% else %}
+                  <span class="badge bg-secondary" data-i18n="student_courses.status_available">Available</span>
+                {% endif %}
+              </div>
+
+              <hr class="my-3">
+
+              <div class="text-muted small">
+                <i class="bi bi-person-workspace"></i> <span data-i18n="student_courses.teacher">Teacher:</span>
+                <b>{{ c["teacher_name"] }}</b>
+              </div>
+            </div>
+
+            <div class="card-footer bg-transparent border-0 pt-0 pb-3 px-3">
+
+              {% if c["is_joined"] == 1 %}
+                <button class="btn btn-success w-100" disabled>
+                  <i class="bi bi-check-circle-fill"></i> <span data-i18n="student_courses.btn_joined">You are enrolled in this course</span>
+                </button>
+
+                <form method="post"
+                      action="{{ url_for('leave_course', course_id=c['id']) }}"
+                      class="mt-2"
+                      onsubmit="return confirm(window.t ? window.t('student_courses.confirm_leave') : 'Leave this course?');">
+                  <button type="submit" class="btn btn-outline-danger w-100">
+                    <i class="bi bi-box-arrow-up"></i> <span data-i18n="student_courses.btn_leave">Leave course</span>
+                  </button>
+                </form>
+
+              {% elif c["request_status"] == "pending" %}
+                <button class="btn btn-warning w-100" disabled>
+                  <i class="bi bi-hourglass-split"></i> <span data-i18n="student_courses.btn_pending">Request sent (pending review)</span>
+                </button>
+
+              {% else %}
+                <a class="btn btn-primary w-100"
+                   href="{{ url_for('request_course', course_id=c['id']) }}"
+                   data-i18n="student_courses.btn_request">
+                  Request to join
+                </a>
+              {% endif %}
+
+            </div>
+
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+</div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const search = document.getElementById('courseSearch');
+  if (!search) return;
+
+  const grid = document.getElementById('coursesGrid');
+  const noResults = document.getElementById('noResults');
+  const items = grid ? grid.querySelectorAll('.course-item') : [];
+
+  search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    let visible = 0;
+
+    items.forEach(item => {
+      const course  = item.getAttribute('data-course')  || '';
+      const teacher = item.getAttribute('data-teacher') || '';
+      const section = item.getAttribute('data-section') || '';
+      const match = !q || course.includes(q) || teacher.includes(q) || section.includes(q);
+
+      item.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+
+    if (noResults) {
+      noResults.classList.toggle('d-none', visible > 0);
+    }
+  });
+});
+</script>
+{% endblock %}

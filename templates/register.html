@@ -1,0 +1,81 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-5" style="max-width:560px;">
+  <div class="card shadow-sm">
+    <div class="card-header fw-bold text-center" data-i18n="register.title"></div>
+
+    <div class="card-body">
+      <form method="post" id="registerForm">
+
+        <div class="mb-3">
+          <label class="form-label" for="fullName" data-i18n="register.full_name"></label>
+          <input id="fullName" name="name" class="form-control text-center" required autofocus autocomplete="name"
+            inputmode="text" pattern="[^0-9]*" data-i18n-attr="placeholder:register.full_name_ph">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label" for="studentId" data-i18n="register.student_id"></label>
+          <input id="studentId" name="student_id" class="form-control text-center" required inputmode="numeric"
+            pattern="[0-9]+" maxlength="20" autocomplete="off" data-i18n-attr="placeholder:register.student_id_ph">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label" for="password" data-i18n="register.password"></label>
+          <input id="password" name="password" type="password" class="form-control text-center" required
+            autocomplete="new-password" data-i18n-attr="placeholder:register.password_ph">
+          <span class="toggle-password-register" onclick="togglePasswordRegister()"><i class="bi bi-eye-fill"></i></span>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label" for="confirmPassword" data-i18n="register.confirm_password"></label>
+          <input id="confirmPassword" name="confirm" type="password" class="form-control text-center" required
+            autocomplete="new-password" data-i18n-attr="placeholder:register.confirm_password_ph">
+        </div>
+
+        <button type="submit" class="btn btn-success w-100 fw-bold" data-i18n="register.submit"></button>
+
+        <div class="text-center mt-3">
+          <a href="{{ url_for('login') }}" class="auth-secondary" data-i18n="register.have_account"></a>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+  function togglePasswordRegister() {
+    const pass = document.getElementById("password");
+    const confirm = document.getElementById("confirmPassword");
+
+    if (pass.type === "password") {
+      pass.type = "text";
+      confirm.type = "text";
+    } else {
+      pass.type = "password";
+      confirm.type = "password";
+    }
+  }
+
+  document.getElementById("registerForm").addEventListener("submit", function(e) {
+    const fields = this.querySelectorAll("[required]");
+    let valid = true;
+    fields.forEach(f => {
+      if (!f.value.trim()) {
+        f.classList.add("is-invalid");
+        valid = false;
+      } else {
+        f.classList.remove("is-invalid");
+      }
+    });
+
+    // Reject numbers in full name
+    const nameField = document.getElementById("fullName");
+    if (/\d/.test(nameField.value)) {
+      nameField.classList.add("is-invalid");
+      valid = false;
+    }
+
+    if (!valid) e.preventDefault();
+  });
+</script>
+{% endblock %}

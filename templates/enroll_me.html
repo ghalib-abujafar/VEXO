@@ -1,0 +1,616 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="container mt-4 text-center" style="max-width: 880px;">
+  <h2 class="fw-bold">
+    <i class="bi bi-camera-fill"></i>
+    <span data-i18n="enroll.title">Face Enrollment</span>
+  </h2>
+
+  <p class="text-muted mb-3">
+    <span data-i18n="enroll.welcome">Welcome</span>
+    {{ name }} —
+    <span data-i18n="enroll.student_id_label">Your Student ID:</span>
+    <strong>{{ student_id }}</strong>
+  </p>
+
+  <div class="d-flex justify-content-center gap-2 flex-wrap mb-3">
+    <button type="button" class="btn btn-success fw-bold" id="startBtn">
+      <i class="bi bi-play-circle-fill"></i>
+      <span data-i18n="enroll.start">Start Capture</span>
+    </button>
+
+    <button type="button" class="btn btn-outline-secondary fw-bold d-none" id="retryBtn" data-i18n="common.retry">
+      Retry
+    </button>
+
+    <button type="button" class="btn btn-outline-warning fw-bold d-none" id="retryVerifyBtn">
+      <i class="bi bi-arrow-repeat"></i>
+      <span data-i18n="enroll.verify_retry">Retry Verification</span>
+    </button>
+
+    <button type="button" class="btn btn-outline-danger fw-bold d-none" id="reenrollBtn">
+      <i class="bi bi-arrow-counterclockwise"></i>
+      <span data-i18n="enroll.verify_reenroll">Re-enroll</span>
+    </button>
+  </div>
+
+  <div class="camera-wrap mx-auto" style="max-width:520px;">
+    <video id="camera" width="520" height="390" autoplay playsinline muted class="w-100 rounded shadow border"></video>
+
+    <button class="camera-settings-btn" id="cameraSettingsBtn" type="button" title="Camera Settings">
+      <i class="bi bi-gear-fill"></i>
+    </button>
+
+    <div class="camera-dropdown" id="cameraDropdown">
+      <div class="camera-dropdown-header">
+        <i class="bi bi-camera-video-fill"></i>
+        <span data-i18n="enroll.choose_camera">Choose Camera:</span>
+      </div>
+      <select id="cameraSelect" class="live-select"></select>
+    </div>
+
+    <div class="face-overlay" aria-hidden="true" id="faceOverlay">
+      <div class="oval">
+        <div class="dot-ring" id="dotRing"></div>
+        <div class="dir-arc" id="dirArc"></div>
+      </div>
+    </div>
+
+    <!-- Head movement label -->
+    <div class="head-guide" id="headGuide">
+      <span class="head-label" id="headLabel"></span>
+    </div>
+  </div>
+
+  <canvas id="canvas" width="520" height="390" class="d-none"></canvas>
+
+  <div id="counter" class="mt-3 fs-4 fw-bold text-primary"></div>
+
+  <div id="result" class="alert mt-4 text-center d-none" role="alert"></div>
+</div>
+
+<script>
+  const student_id = "{{ student_id }}";
+  const name = "{{ name }}";
+
+  const video = document.getElementById("camera");
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+
+  const counter = document.getElementById("counter");
+  const result = document.getElementById("result");
+
+  const startBtn = document.getElementById("startBtn");
+  const retryBtn = document.getElementById("retryBtn");
+  const retryVerifyBtn = document.getElementById("retryVerifyBtn");
+  const reenrollBtn = document.getElementById("reenrollBtn");
+
+  const cameraSelect = document.getElementById("cameraSelect");
+  const cameraSettingsBtn = document.getElementById("cameraSettingsBtn");
+  const cameraDropdown = document.getElementById("cameraDropdown");
+
+  const dotRing = document.getElementById("dotRing");
+  const faceOverlay = document.getElementById("faceOverlay");
+
+  let stream = null;
+  let selectedCameraId = null;
+  let isRunning = false;
+  let dropdownOpen = false;
+
+  // Track verification phase
+  let inVerifyPhase = false;
+  const MAX_VERIFY_ATTEMPTS = 3;
+  let verifyAttempts = 0;
+  let enrollmentConfirmed = false;
+
+  function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
+  function tt(key, vars) {
+    return window.t ? window.t(key, vars) : key;
+  }
+
+  function getCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute("content") : (window.CSRF_TOKEN || "");
+  }
+
+  function showBox(kind, msg) {
+    result.className = `alert alert-${kind} mt-4 text-center`;
+    result.innerHTML = msg;
+    result.classList.remove("d-none");
+  }
+
+  function hideBox() {
+    result.classList.add("d-none");
+    result.textContent = "";
+  }
+
+  function stopStream() {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+  }
+
+  function resetUI() {
+    isRunning = false;
+
+    startBtn.disabled = false;
+    startBtn.style.display = "inline-flex";
+
+    retryBtn.classList.add("d-none");
+    retryVerifyBtn.classList.add("d-none");
+    reenrollBtn.classList.add("d-none");
+
+    cameraSettingsBtn.style.display = "inline-flex";
+    cameraDropdown.classList.remove("open");
+    cameraSettingsBtn.classList.remove("active");
+    dropdownOpen = false;
+
+    counter.textContent = "";
+    setDotsProgress(0);
+
+    // Hide head guide + arc
+    const hg = document.getElementById("headGuide");
+    if (hg) hg.classList.remove("visible");
+    const da = document.getElementById("dirArc");
+    if (da) { da.classList.remove("visible", "capturing", "full-sweep"); da.style.transform = ""; }
+
+    inVerifyPhase = false;
+    verifyAttempts = 0;
+    enrollmentConfirmed = false;
+  }
+
+  cameraSettingsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    dropdownOpen = !dropdownOpen;
+    cameraDropdown.classList.toggle("open", dropdownOpen);
+    cameraSettingsBtn.classList.toggle("active", dropdownOpen);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!cameraDropdown.contains(e.target) && !cameraSettingsBtn.contains(e.target)) {
+      dropdownOpen = false;
+      cameraDropdown.classList.remove("open");
+      cameraSettingsBtn.classList.remove("active");
+    }
+  });
+
+  async function postJson(url, bodyObj) {
+    const res = await fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        ...(getCsrfToken() ? { "X-CSRFToken": getCsrfToken() } : {})
+      },
+      body: JSON.stringify(bodyObj || {})
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) throw new Error(data.message || "Request failed");
+    // Don't throw on status=fail or status=verify — let caller handle those
+    if (data.status === "error") throw new Error(data.message || "Server error");
+
+    return data;
+  }
+
+  async function requestPermissionOnce() {
+    const tmp = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    tmp.getTracks().forEach(t => t.stop());
+  }
+
+  async function startPreview() {
+    stopStream();
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: selectedCameraId ? { deviceId: { exact: selectedCameraId } } : true,
+        audio: false
+      });
+    } catch (e) {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+
+    video.srcObject = stream;
+    await video.play().catch(() => { });
+  }
+
+  async function loadCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cams = devices.filter(d => d.kind === "videoinput");
+
+    cameraSelect.innerHTML = "";
+
+    cams.forEach((cam, i) => {
+      const opt = document.createElement("option");
+      opt.value = cam.deviceId;
+      opt.text = cam.label || tt("enroll.camera_n", { n: i + 1 });
+      cameraSelect.appendChild(opt);
+    });
+
+    if (!cams.length) throw new Error(tt("enroll.no_cameras"));
+
+    selectedCameraId = cams[0].deviceId;
+    cameraSelect.value = selectedCameraId;
+
+    await startPreview();
+  }
+
+  cameraSelect.addEventListener("change", async () => {
+    selectedCameraId = cameraSelect.value;
+
+    try {
+      await startPreview();
+    } catch (e) {
+      console.error(e);
+      showBox("warning", tt("enroll.failed_selected_camera"));
+    }
+  });
+
+  const DOTS = 48;
+
+  function buildDotRing() {
+    dotRing.innerHTML = "";
+
+    const w = dotRing.clientWidth;
+    const h = dotRing.clientHeight;
+    const rx = w * 0.48;
+    const ry = h * 0.48;
+
+    for (let i = 0; i < DOTS; i++) {
+      const d = document.createElement("span");
+      d.className = "dot";
+      dotRing.appendChild(d);
+
+      const startAngle = -Math.PI / 2;
+      const t = startAngle + (i / DOTS) * Math.PI * 2;
+
+      const x = (w / 2) + rx * Math.cos(t);
+      const y = (h / 2) + ry * Math.sin(t);
+
+      d.style.left = x + "px";
+      d.style.top = y + "px";
+    }
+  }
+
+  function setDotsProgress(pct) {
+    const onCount = Math.round((Math.max(0, Math.min(100, pct)) / 100) * DOTS);
+    const dots = dotRing.querySelectorAll(".dot");
+
+    dots.forEach((d, i) => {
+      d.classList.toggle("on", i < onCount);
+    });
+  }
+
+  window.addEventListener("load", () => {
+    buildDotRing();
+    setDotsProgress(0);
+  });
+
+  window.addEventListener("resize", () => {
+    buildDotRing();
+  });
+
+  const shutterSound = new Audio("/static/sounds/camera_shutter.wav");
+
+  function playShutter() {
+    shutterSound.currentTime = 0;
+    shutterSound.play().catch(() => { });
+  }
+
+  function flash() {
+    faceOverlay.classList.add("flash");
+    setTimeout(() => faceOverlay.classList.remove("flash"), 140);
+  }
+
+  (async () => {
+    try {
+      await requestPermissionOnce();
+      await loadCameras();
+    } catch (e) {
+      console.error(e);
+      showBox("danger", tt("enroll.check_permissions"));
+    }
+  })();
+
+  // ─────────────────────────────────────────────
+  // Verification phase
+  // ─────────────────────────────────────────────
+  async function runVerification() {
+    inVerifyPhase = true;
+    verifyAttempts++;
+
+    retryVerifyBtn.classList.add("d-none");
+    reenrollBtn.classList.add("d-none");
+    hideBox();
+
+    // Ensure camera is running
+    try {
+      if (!stream) await startPreview();
+    } catch (e) {
+      showBox("danger", '<i class="bi bi-x-circle-fill"></i> ' + tt("enroll.failed_camera_access"));
+      retryVerifyBtn.classList.remove("d-none");
+      reenrollBtn.classList.remove("d-none");
+      return;
+    }
+
+    counter.textContent = tt("enroll.verify_look");
+
+    // Countdown 3 seconds
+    for (let i = 3; i > 0; i--) {
+      counter.textContent = tt("enroll.verify_countdown", { i });
+      await sleep(1000);
+    }
+
+    counter.textContent = tt("enroll.verifying");
+
+    // Capture frame
+    const vw = video.videoWidth || canvas.width;
+    const vh = video.videoHeight || canvas.height;
+    canvas.width = vw;
+    canvas.height = vh;
+    ctx.drawImage(video, 0, 0, vw, vh);
+
+    playShutter();
+    flash();
+
+    const imgData = canvas.toDataURL("image/jpeg", 0.9);
+
+    try {
+      const data = await postJson("/verify_enrollment", { img: imgData, student_id });
+
+      if (data.status === "success") {
+        // Verification passed!
+        enrollmentConfirmed = true;
+        stopStream();
+        setDotsProgress(100);
+        showBox("success", '<i class="bi bi-check-circle-fill"></i> ' + (data.message || tt("enroll.verify_success")));
+        counter.textContent = tt("enroll.success_done");
+
+        setTimeout(() => {
+          window.location.href = "{{ url_for('login') }}";
+        }, 1200);
+
+      } else if (data.status === "fail") {
+        // Face not recognized
+        if (verifyAttempts >= MAX_VERIFY_ATTEMPTS) {
+          // Max attempts reached — clean up and force re-enroll
+          stopStream();
+          try { await postJson("/cancel_enrollment", { student_id }); } catch (_) {}
+          showBox("danger", '<i class="bi bi-x-circle-fill"></i> ' + tt("enroll.verify_max_attempts"));
+          counter.textContent = "";
+          reenrollBtn.classList.remove("d-none");
+        } else {
+          showBox("warning", '<i class="bi bi-exclamation-triangle-fill"></i> ' + (data.message || tt("enroll.verify_fail")));
+          counter.textContent = "";
+          retryVerifyBtn.classList.remove("d-none");
+          reenrollBtn.classList.remove("d-none");
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      showBox("danger", '<i class="bi bi-x-circle-fill"></i> ' + (e.message || tt("enroll.finalize_server_error")));
+      counter.textContent = "";
+      retryVerifyBtn.classList.remove("d-none");
+      reenrollBtn.classList.remove("d-none");
+    }
+  }
+
+  // Retry verification button
+  retryVerifyBtn.addEventListener("click", () => {
+    runVerification();
+  });
+
+  // Re-enroll button — clean up everything and start fresh
+  reenrollBtn.addEventListener("click", async () => {
+    reenrollBtn.disabled = true;
+    retryVerifyBtn.classList.add("d-none");
+    counter.textContent = "";
+    stopStream();
+
+    try {
+      await postJson("/cancel_enrollment", { student_id });
+    } catch (e) {
+      console.error("Cleanup failed:", e);
+    }
+
+    window.location.reload();
+  });
+
+  // ─────────────────────────────────────────────
+  // Main enrollment flow
+  // ─────────────────────────────────────────────
+  startBtn.addEventListener("click", async () => {
+    if (isRunning) return;
+    isRunning = true;
+
+    startBtn.style.display = "none";
+
+    cameraDropdown.classList.remove("open");
+    cameraSettingsBtn.classList.remove("active");
+    cameraSettingsBtn.style.display = "none";
+    dropdownOpen = false;
+
+    hideBox();
+    startBtn.disabled = true;
+    retryBtn.classList.add("d-none");
+
+    if (!student_id || student_id === "None" || student_id.trim() === "") {
+      showBox("danger", '<i class="bi bi-x-circle-fill"></i> ' + tt("enroll.student_id_missing"));
+      resetUI();
+      return;
+    }
+
+    try {
+      if (!stream) await startPreview();
+    } catch (e) {
+      console.error(e);
+      showBox("danger", '<i class="bi bi-x-circle-fill"></i> ' + tt("enroll.failed_camera_access"));
+      resetUI();
+      return;
+    }
+
+    const total = 5;
+    let count = 0;
+
+    // Arc sweep: center (full ring) → right → left → up → down
+    const DIRECTIONS = [
+      { deg: 0,   key: "enroll.pose_center", sweep: true },  // full circle
+      { deg: 90,  key: "enroll.pose_right"  },
+      { deg: 270, key: "enroll.pose_left"   },
+      { deg: 360, key: "enroll.pose_up"     },
+      { deg: 540, key: "enroll.pose_down"   }
+    ];
+
+    const dirArc   = document.getElementById("dirArc");
+    const headGuide = document.getElementById("headGuide");
+    const headLabel = document.getElementById("headLabel");
+
+    function showHeadGuide(idx) {
+      const d = DIRECTIONS[idx] || DIRECTIONS[0];
+
+      dirArc.classList.remove("full-sweep", "capturing");
+
+      if (d.sweep) {
+        dirArc.style.transform = "rotate(0deg)";
+        void dirArc.offsetWidth;            // restart animation
+        dirArc.classList.add("full-sweep");
+      } else {
+        dirArc.style.transform = `rotate(${d.deg}deg)`;
+      }
+
+      dirArc.classList.add("visible");
+      headLabel.textContent = tt(d.key);
+      headGuide.classList.add("visible");
+      headGuide.classList.remove("capturing");
+    }
+
+    function hideHeadGuide() {
+      dirArc.classList.remove("visible", "capturing", "full-sweep");
+      headGuide.classList.remove("visible");
+    }
+
+    try {
+      while (count < total) {
+        // Show direction arc
+        showHeadGuide(count);
+
+        for (let i = 3; i > 0; i--) {
+          counter.textContent = tt("enroll.capture_in", { i });
+          await sleep(1000);
+        }
+
+        dirArc.classList.add("capturing");
+        headGuide.classList.add("capturing");
+
+        const vw = video.videoWidth || canvas.width;
+        const vh = video.videoHeight || canvas.height;
+
+        canvas.width = vw;
+        canvas.height = vh;
+
+        ctx.drawImage(video, 0, 0, vw, vh);
+
+        playShutter();
+        flash();
+
+        const imgData = canvas.toDataURL("image/jpeg", 0.9);
+
+        await postJson("/upload_frame", {
+          name,
+          student_id,
+          img: imgData,
+          index: count
+        });
+
+        count++;
+
+        const pct = Math.round((count / total) * 100);
+        setDotsProgress(pct);
+
+        counter.textContent = tt("enroll.captured_x_of_y", { x: count, y: total });
+        await sleep(400);
+      }
+
+      hideHeadGuide();
+      dirArc.style.transform = "";
+    } catch (e) {
+      console.error(e);
+      showBox("danger", '<i class="bi bi-x-circle-fill"></i> ' + (e.message || tt("enroll.capture_upload_error")));
+      retryBtn.classList.remove("d-none");
+      resetUI();
+      return;
+    }
+
+    // Don't stop the camera — we need it for verification
+    counter.textContent = tt("enroll.finalizing");
+
+    try {
+      const data = await postJson("/finalize_me", { name, student_id });
+
+      if (data.status === "verify") {
+        // Transition to verification phase
+        setDotsProgress(80);
+        verifyAttempts = 0;
+        await runVerification();
+
+      } else if (data.status === "success") {
+        // Already enrolled (edge case)
+        stopStream();
+        showBox("success", '<i class="bi bi-check-circle-fill"></i> ' + (data.message || tt("enroll.success_message_fallback")));
+        counter.textContent = tt("enroll.success_done");
+        retryBtn.classList.add("d-none");
+
+        setTimeout(() => {
+          window.location.href = "{{ url_for('login') }}";
+        }, 900);
+      }
+
+    } catch (e) {
+      console.error(e);
+      showBox("danger", '<i class="bi bi-x-circle-fill"></i> ' + (e.message || tt("enroll.finalize_server_error")));
+      retryBtn.classList.remove("d-none");
+      resetUI();
+    }
+  });
+
+  retryBtn.addEventListener("click", async () => {
+    hideBox();
+    resetUI();
+
+    try {
+      await startPreview();
+    } catch (e) {
+      console.error(e);
+      showBox("danger", tt("enroll.failed_camera_access"));
+    }
+  });
+
+  // ─────────────────────────────────────────────
+  // Cleanup on page leave (tab close / navigate away)
+  // If the user leaves during verification without completing,
+  // send a cleanup request so captured images are deleted.
+  // ─────────────────────────────────────────────
+  function sendCleanupBeacon() {
+    if (enrollmentConfirmed) return;
+    if (!inVerifyPhase && !isRunning) return;
+
+    const payload = JSON.stringify({ student_id });
+    navigator.sendBeacon(
+      "/cancel_enrollment",
+      new Blob([payload], { type: "application/json" })
+    );
+  }
+
+  window.addEventListener("beforeunload", sendCleanupBeacon);
+  window.addEventListener("pagehide", sendCleanupBeacon);
+</script>
+
+{% endblock %}

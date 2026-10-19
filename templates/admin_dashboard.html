@@ -1,0 +1,334 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="admin-container">
+
+  <!-- Title -->
+  <div class="mb-4 text-center">
+    <h2 class="fw-bold mb-1"><i class="bi bi-shield-lock-fill"></i> <span data-i18n="admin.title">Admin Dashboard</span></h2>
+    <p class="text-muted mb-0" data-i18n="admin.subtitle">Manage teachers, accounts, and passwords.</p>
+  </div>
+
+  <!-- ── Action Selector ── -->
+  <div class="action-selector">
+
+    <div class="action-card" data-panel="panel-create" data-active-class="active-create">
+      <span class="action-icon"><i class="bi bi-plus-circle-fill"></i></span>
+      <span class="action-label" data-i18n="admin.create_teacher_title">Create Teacher</span>
+    </div>
+
+    <div class="action-card" data-panel="panel-delete" data-active-class="active-delete">
+      <span class="action-icon"><i class="bi bi-trash3-fill"></i></span>
+      <span class="action-label" data-i18n="admin.delete_account_title">Delete Account</span>
+    </div>
+
+    <div class="action-card" data-panel="panel-reset" data-active-class="active-reset">
+      <span class="action-icon"><i class="bi bi-key-fill"></i></span>
+      <span class="action-label" data-i18n="admin.reset_password_title">Reset Password</span>
+    </div>
+
+    <div class="action-card" data-panel="panel-reset-face" data-active-class="active-reset-face">
+      <span class="action-icon"><i class="bi bi-person-x-fill"></i></span>
+      <span class="action-label" data-i18n="admin.reset_face_title">Reset Face</span>
+    </div>
+
+  </div>
+
+  <!-- ===================== Create Teacher Panel ===================== -->
+  <div id="panel-create" class="admin-panel">
+    <div class="panel-inner">
+      <div class="mb-3">
+        <label class="form-label" for="ct_username" data-i18n="admin.username">Username</label>
+        <input id="ct_username" class="form-control" type="text"
+          data-i18n-attr="placeholder:admin.username_ph" placeholder="Enter username">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="ct_password" data-i18n="admin.password">Password</label>
+        <input id="ct_password" class="form-control" type="password"
+          data-i18n-attr="placeholder:admin.password_ph" placeholder="Enter password">
+      </div>
+      <button id="ct_btn" class="btn btn-success w-100" data-i18n="admin.create_btn">
+        Create Teacher
+      </button>
+      <div id="ct_result" class="result-box mt-3"></div>
+    </div>
+  </div>
+
+  <!-- ===================== Delete Account Panel ===================== -->
+  <div id="panel-delete" class="admin-panel">
+    <div class="panel-inner">
+      <div class="mb-3">
+        <label class="form-label" for="da_username" data-i18n="admin.del_username">Username to delete</label>
+        <input id="da_username" class="form-control" type="text"
+          data-i18n-attr="placeholder:admin.del_username_ph" placeholder="Enter username">
+      </div>
+      <button id="da_btn" class="btn btn-danger w-100" data-i18n="admin.delete_btn">
+        Delete Account
+      </button>
+      <div id="da_result" class="result-box mt-3"></div>
+    </div>
+  </div>
+
+  <!-- ===================== Reset Password Panel ===================== -->
+  <div id="panel-reset" class="admin-panel">
+    <div class="panel-inner">
+      <div class="mb-3">
+        <label class="form-label" for="rp_username" data-i18n="admin.rp_username">Username</label>
+        <input id="rp_username" class="form-control" type="text"
+          data-i18n-attr="placeholder:admin.rp_username_ph" placeholder="Enter username">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="rp_password" data-i18n="admin.rp_new_password">New Password</label>
+        <input id="rp_password" class="form-control" type="password"
+          data-i18n-attr="placeholder:admin.rp_new_password_ph" placeholder="Enter new password">
+      </div>
+      <button id="rp_btn" class="btn btn-warning w-100 text-dark" data-i18n="admin.reset_btn">
+        Reset Password
+      </button>
+      <div id="rp_result" class="result-box mt-3"></div>
+    </div>
+  </div>
+
+  <!-- ===================== Reset Face Panel ===================== -->
+  <div id="panel-reset-face" class="admin-panel">
+    <div class="panel-inner">
+      <div class="mb-3">
+        <label class="form-label" for="rf_username" data-i18n="admin.rf_username">Student username</label>
+        <input id="rf_username" class="form-control" type="text"
+          data-i18n-attr="placeholder:admin.rf_username_ph" placeholder="Enter student username">
+      </div>
+      <button id="rf_btn" class="btn btn-info w-100 text-dark" data-i18n="admin.rf_btn">
+        Reset Face Data
+      </button>
+      <div id="rf_result" class="result-box mt-3"></div>
+    </div>
+  </div>
+
+  <!-- ===================== Accounts List ===================== -->
+  <div class="accounts-section">
+    <div class="accounts-header">
+      <span class="fw-bold"><i class="bi bi-clipboard-data-fill"></i> <span data-i18n="admin.accounts_list_title">All Accounts</span></span>
+      <input id="accounts_search" type="text" class="form-control form-control-sm"
+        style="max-width:220px; border-radius:8px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff;"
+        data-i18n-attr="placeholder:admin.search_placeholder" placeholder="Search...">
+      <button id="refresh_accounts_btn" class="btn btn-sm btn-outline-light" data-i18n="admin.refresh">
+        <i class="bi bi-arrow-clockwise"></i> <span data-i18n="admin.refresh">Refresh</span>
+      </button>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover table-striped mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th data-i18n="admin.tbl_username">Username</th>
+            <th data-i18n="admin.tbl_student_name">Student Name</th>
+            <th data-i18n="admin.tbl_role">Role</th>
+          </tr>
+        </thead>
+        <tbody id="accounts_tbody">
+          <tr>
+            <td colspan="3" class="text-center text-muted py-4" data-i18n="admin.loading_accounts">
+              Loading accounts...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── Panel Toggle Logic ──
+  const cards = document.querySelectorAll(".action-card");
+  const panels = document.querySelectorAll(".admin-panel");
+
+  cards.forEach(card => {
+    card.addEventListener("click", () => {
+      const targetId = card.dataset.panel;
+      const activeClass = card.dataset.activeClass;
+      const isAlreadyOpen = card.classList.contains("active");
+
+      // Close all panels and remove active states
+      cards.forEach(c => {
+        c.classList.remove("active", "active-create", "active-delete", "active-reset", "active-reset-face");
+      });
+      panels.forEach(p => p.classList.remove("open"));
+
+      // If clicking the same card, just close (toggle off)
+      if (isAlreadyOpen) return;
+
+      // Open the selected panel
+      card.classList.add("active", activeClass);
+      document.getElementById(targetId).classList.add("open");
+    });
+  });
+
+  // ── Helpers ──
+  function showResult(el, type, msg) {
+    el.innerHTML = `<div class="alert alert-${type} alert-dismissible fade show py-2 mb-0" role="alert">
+      ${msg}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>`;
+  }
+
+  async function postJSON(url, body) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { ok: res.ok, data: await res.json() };
+  }
+
+  // ── Create Teacher ──
+  document.getElementById("ct_btn").addEventListener("click", async () => {
+    const username = document.getElementById("ct_username").value.trim();
+    const password = document.getElementById("ct_password").value.trim();
+    const resultEl = document.getElementById("ct_result");
+
+    if (!username || !password) {
+      showResult(resultEl, "warning", window.t("admin.fill_all_fields"));
+      return;
+    }
+
+    try {
+      const { ok, data } = await postJSON("/dashboard/create_teacher", { username, password });
+      showResult(resultEl, ok ? "success" : "danger", data.message);
+      if (ok) {
+        document.getElementById("ct_username").value = "";
+        document.getElementById("ct_password").value = "";
+        loadAccounts();
+      }
+    } catch {
+      showResult(resultEl, "danger", window.t("admin.network_error"));
+    }
+  });
+
+  // ── Delete Account ──
+  document.getElementById("da_btn").addEventListener("click", async () => {
+    const username = document.getElementById("da_username").value.trim();
+    const resultEl = document.getElementById("da_result");
+
+    if (!username) {
+      showResult(resultEl, "warning", window.t("admin.fill_all_fields"));
+      return;
+    }
+
+    const confirmMsg = window.t("admin.confirm_delete", { username });
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const { ok, data } = await postJSON("/dashboard/delete_account", { username });
+      showResult(resultEl, ok ? "success" : "danger", data.message);
+      if (ok) {
+        document.getElementById("da_username").value = "";
+        loadAccounts();
+      }
+    } catch {
+      showResult(resultEl, "danger", window.t("admin.network_error"));
+    }
+  });
+
+  // ── Reset Password ──
+  document.getElementById("rp_btn").addEventListener("click", async () => {
+    const username = document.getElementById("rp_username").value.trim();
+    const new_password = document.getElementById("rp_password").value.trim();
+    const resultEl = document.getElementById("rp_result");
+
+    if (!username || !new_password) {
+      showResult(resultEl, "warning", window.t("admin.fill_all_fields"));
+      return;
+    }
+
+    try {
+      const { ok, data } = await postJSON("/dashboard/reset_password", { username, new_password });
+      showResult(resultEl, ok ? "success" : "danger", data.message);
+      if (ok) {
+        document.getElementById("rp_username").value = "";
+        document.getElementById("rp_password").value = "";
+      }
+    } catch {
+      showResult(resultEl, "danger", window.t("admin.network_error"));
+    }
+  });
+
+  // ── Reset Face ──
+  document.getElementById("rf_btn").addEventListener("click", async () => {
+    const username = document.getElementById("rf_username").value.trim();
+    const resultEl = document.getElementById("rf_result");
+
+    if (!username) {
+      showResult(resultEl, "warning", window.t("admin.fill_all_fields"));
+      return;
+    }
+
+    const confirmMsg = window.t("admin.confirm_reset_face", { username });
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const { ok, data } = await postJSON("/dashboard/reset_face", { username });
+      showResult(resultEl, ok ? "success" : "danger", data.message);
+      if (ok) {
+        document.getElementById("rf_username").value = "";
+        loadAccounts();
+      }
+    } catch {
+      showResult(resultEl, "danger", window.t("admin.network_error"));
+    }
+  });
+
+  // ── Accounts List ──
+  async function loadAccounts() {
+    const tbody = document.getElementById("accounts_tbody");
+    tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted py-4">${window.t("admin.loading_accounts")}</td></tr>`;
+
+    try {
+      const res = await fetch("/dashboard/list_accounts");
+      const accounts = await res.json();
+
+      if (!accounts.length) {
+        tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted py-4">${window.t("admin.no_accounts")}</td></tr>`;
+        return;
+      }
+
+      const roleBadge = (role) => {
+        const classes = {
+          admin: "bg-primary",
+          teacher: "bg-success",
+          student: "bg-info text-dark",
+        };
+        return `<span class="badge ${classes[role] || 'bg-secondary'}">${role}</span>`;
+      };
+
+      tbody.innerHTML = accounts.map(a => `
+        <tr>
+          <td><strong>${a.username}</strong></td>
+          <td>${a.student_name || "—"}</td>
+          <td>${roleBadge(a.role)}</td>
+        </tr>
+      `).join("");
+
+    } catch {
+      tbody.innerHTML = `<tr><td colspan="3" class="text-center text-danger py-4">${window.t("admin.load_failed")}</td></tr>`;
+    }
+  }
+
+  document.getElementById("refresh_accounts_btn").addEventListener("click", loadAccounts);
+
+  // ── Search / Filter ──
+  document.getElementById("accounts_search").addEventListener("input", (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    const rows = document.querySelectorAll("#accounts_tbody tr");
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      row.style.display = text.includes(q) ? "" : "none";
+    });
+  });
+
+  // Load accounts on page ready
+  document.addEventListener("DOMContentLoaded", () => {
+    setTimeout(loadAccounts, 300);
+  });
+</script>
+
+{% endblock %}

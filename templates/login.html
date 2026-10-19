@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-5" style="max-width:520px;">
+  <div class="card shadow-sm">
+    <div class="card-header fw-bold text-center" data-i18n="login.title"></div>
+
+    <div class="card-body">
+      <form method="post" id="loginForm">
+
+        <div class="mb-3">
+          <label class="form-label" for="username" data-i18n="login.username"></label>
+          <input id="username" name="username" class="form-control text-center" required autofocus
+            autocomplete="username" inputmode="text" data-i18n-attr="placeholder:login.username_ph">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label" for="password" data-i18n="login.password"></label>
+          <input id="password" name="password" type="password" class="form-control text-center" required
+            autocomplete="current-password" data-i18n-attr="placeholder:login.password_ph">
+          <span class="toggle-password" onclick="togglePassword()"><i class="bi bi-eye-fill"></i></span>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100 fw-bold" data-i18n="login.submit"></button>
+
+        <div class="text-center mt-3">
+          <a href="{{ url_for('register') }}" class="auth-secondary" data-i18n="login.register_link"></a>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  function togglePassword() {
+    const passField = document.getElementById("password");
+    if (passField.type === "password") {
+      passField.type = "text";
+    } else {
+      passField.type = "password";
+    }
+  }
+
+  document.getElementById("loginForm").addEventListener("submit", function(e) {
+    const fields = this.querySelectorAll("[required]");
+    let valid = true;
+    fields.forEach(f => {
+      if (!f.value.trim()) {
+        f.classList.add("is-invalid");
+        valid = false;
+      } else {
+        f.classList.remove("is-invalid");
+      }
+    });
+    if (!valid) e.preventDefault();
+  });
+</script>
+{% endblock %}

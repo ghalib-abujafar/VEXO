@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-4">
+
+  <h3 class="mb-4 text-center">
+    <i class="bi bi-bar-chart-fill"></i> <span data-i18n="attendance.title"></span> {{ selected_date }}
+  </h3>
+
+  <form method="get" class="d-flex justify-content-center gap-2 mb-4 flex-wrap">
+
+    <select name="subject_id" class="form-select" style="max-width: 260px;" required>
+      <option value="" data-i18n="attendance.select_subject_opt"></option>
+      {% for s in subjects %}
+        {% set sid = s.id | int %}
+        <option value="{{ sid }}" {% if subject_id == sid %}selected{% endif %}>
+          {{ s.name }} - {{ s.section }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <input
+      type="date"
+      name="date"
+      class="form-control"
+      style="max-width: 200px;"
+      value="{{ selected_date }}"
+      required
+    >
+
+    <button class="btn btn-primary" type="submit" data-i18n="attendance.view_report"></button>
+  </form>
+
+  {% if rows %}
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover text-center align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th data-i18n="attendance.student_id"></th>
+            <th data-i18n="attendance.name"></th>
+            <th data-i18n="attendance.first_seen"></th>
+            <th data-i18n="attendance.last_seen"></th>
+            <th data-i18n="attendance.duration_minutes"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>{{ row.student_id }}</td>
+            <td>{{ row.name }}</td>
+            <td>{{ row.first_seen }}</td>
+            <td>{{ row.last_seen }}</td>
+            <td>{{ row.duration_minutes }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  {% else %}
+    <p class="text-center text-muted mt-4 mb-0" data-i18n="attendance.none"></p>
+  {% endif %}
+
+</div>
+{% endblock %}

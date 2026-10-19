@@ -1,0 +1,290 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container py-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h3 class="m-0"><i class="bi bi-people-fill"></i> <span data-i18n="course_students.title">Course Students
+        Management</span></h3>
+  </div>
+
+  <!-- Course select -->
+  <div class="row g-3 align-items-end mb-4">
+    <div class="col-md-6">
+      <label class="form-label fw-bold" data-i18n="course_students.select_course_label">Select Course</label>
+      <select id="courseSelect" class="form-select">
+        <option value="" data-i18n="common.choose">-- Choose --</option>
+        {% for c in courses %}
+        <option value="{{ c['id'] }}">{{ c['name'] }} - {{ c['section'] }}</option>
+        {% endfor %}
+      </select>
+
+      {% if courses|length == 0 %}
+      <div class="text-warning small mt-2" data-i18n="course_students.no_courses">
+        You currently have no courses. Create a course first from the Courses page.
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="col-md-6 d-flex gap-2">
+      <button class="btn btn-primary" id="btnLoad" type="button" data-i18n="course_students.load_btn">
+        View Course Students
+      </button>
+      <button class="btn btn-success" id="btnAdd" type="button" data-i18n="course_students.add_btn">
+        Add Student
+      </button>
+    </div>
+  </div>
+
+  <hr class="my-3">
+
+  <!-- Status message -->
+  <div id="statusMsg" class="alert alert-secondary py-2 text-center d-none" role="alert"></div>
+
+  <!-- Students table -->
+  <h5 class="mb-2" data-i18n="course_students.course_students">Course Students</h5>
+  <div class="table-responsive">
+    <table class="table table-striped text-center align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th style="width:70px;">#</th>
+          <th data-i18n="common.name">Name</th>
+          <th data-i18n="common.student_id">Student ID</th>
+          <th style="width:140px;" data-i18n="common.action">Action</th>
+        </tr>
+      </thead>
+      <tbody id="studentsTbody">
+        <tr>
+          <td colspan="4" class="text-muted" data-i18n="course_students.hint">
+            Select a course then click “View Course Students”.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Available students -->
+  <div id="availableBox" class="mt-4 d-none">
+    <h5 class="mb-2" data-i18n="course_students.available_students">Students Not Enrolled in This Course</h5>
+    <div id="availableList"></div>
+  </div>
+
+</div>
+
+<script>
+  const sel = document.getElementById("courseSelect");
+  const tbody = document.getElementById("studentsTbody");
+  const availableBox = document.getElementById("availableBox");
+  const availableList = document.getElementById("availableList");
+  const statusMsg = document.getElementById("statusMsg");
+
+  const btnLoad = document.getElementById("btnLoad");
+  const btnAdd = document.getElementById("btnAdd");
+
+  function escapeHtml(s) {
+    return String(s ?? "").replace(/[&<>"']/g, (m) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[m]));
+  }
+
+  function setStatus(message, kind = "secondary") {
+    if (!message) {
+      statusMsg.classList.add("d-none");
+      statusMsg.textContent = "";
+      statusMsg.className = "alert alert-secondary py-2 text-center d-none";
+      return;
+    }
+    statusMsg.textContent = message;
+    statusMsg.className = `alert alert-${kind} py-2 text-center`;
+    statusMsg.classList.remove("d-none");
+  }
+
+  function setLoading(isLoading) {
+    btnLoad.disabled = isLoading;
+    btnAdd.disabled = isLoading;
+    sel.disabled = isLoading;
+  }
+
+  function getCourseId() {
+    const v = sel.value;
+    const id = parseInt(v, 10);
+    if (!id) {
+      setStatus("Please select a course first", "warning");
+      return null;
+    }
+    return id;
+  }
+
+  function reTranslate() {
+    if (window.translateDom) window.translateDom();
+  }
+
+  async function fetchJson(url, options = {}) {
+    const res = await fetch(url, {
+      credentials: "same-origin",
+      ...options
+    });
+    if (!res.ok) {
+      throw new Error("Request failed");
+    }
+    return res.json();
+  }
+
+  async function loadStudents() {
+    const courseId = getCourseId();
+    if (!courseId) return;
+
+    setLoading(true);
+    setStatus("Loading course students...", "secondary");
+
+    try {
+      const rows = await fetchJson(`/api/course/${courseId}/students`);
+
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="4" class="text-muted" data-i18n="course_students.none_in_course">No students in this course.</td></tr>`;
+        setStatus("", "secondary");
+        reTranslate();
+        return;
+      }
+
+      tbody.innerHTML = rows.map((r, i) => {
+        const name = escapeHtml(r.name || r.display_name || r.student_username || "-");
+        const sidText = escapeHtml(r.student_id_text || r.student_username || "-");
+        const studentAccountId = parseInt(r.student_account_id, 10) || 0;
+
+        return `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${name}</td>
+          <td>${sidText}</td>
+          <td>
+            <button class="btn btn-danger btn-sm btn-remove"
+              data-course="${courseId}"
+              data-student="${studentAccountId}"
+              data-i18n="course_students.remove_btn">
+              Remove
+            </button>
+          </td>
+        </tr>
+      `;
+      }).join("");
+
+      setStatus("", "secondary");
+    } catch (err) {
+      setStatus("Failed to load course students", "danger");
+    } finally {
+      setLoading(false);
+      reTranslate();
+    }
+  }
+
+  async function showAvailable() {
+    const courseId = getCourseId();
+    if (!courseId) return;
+
+    setLoading(true);
+    setStatus("Loading available students...", "secondary");
+    availableBox.classList.remove("d-none");
+
+    try {
+      const rows = await fetchJson(`/api/course/${courseId}/available_students`);
+
+      if (!rows.length) {
+        availableList.innerHTML = `<div class="text-muted" data-i18n="course_students.none_available">No students available to add.</div>`;
+        setStatus("", "secondary");
+        reTranslate();
+        return;
+      }
+
+      availableList.innerHTML = rows.map((r) => {
+        const name = escapeHtml(r.name || r.display_name || r.student_username || "-");
+        const sidText = escapeHtml(r.student_id_text || r.student_username || "");
+        const studentAccountId = parseInt(r.student_account_id, 10) || 0;
+
+        return `
+        <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2">
+          <div>
+            <b>${name}</b>
+            <div class="small text-muted">${sidText}</div>
+          </div>
+          <button class="btn btn-success btn-sm btn-add"
+            data-course="${courseId}"
+            data-student="${studentAccountId}"
+            data-i18n="course_students.add_one_btn">
+            Add
+          </button>
+        </div>
+      `;
+      }).join("");
+
+      setStatus("", "secondary");
+    } catch (err) {
+      setStatus("Failed to load available students list", "danger");
+    } finally {
+      setLoading(false);
+      reTranslate();
+    }
+  }
+
+  async function addStudent(courseId, studentAccountId) {
+    setLoading(true);
+    setStatus("Adding student...", "secondary");
+
+    try {
+      await fetchJson(`/api/course/${courseId}/add_student`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ student_account_id: studentAccountId })
+      });
+
+      await loadStudents();
+      await showAvailable();
+      setStatus("Student added successfully", "success");
+    } catch (err) {
+      setStatus("Could not add student", "danger");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function removeStudent(courseId, studentAccountId) {
+    setLoading(true);
+    setStatus("Removing student...", "secondary");
+
+    try {
+      await fetchJson(`/api/course/${courseId}/remove_student`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ student_account_id: studentAccountId })
+      });
+
+      await loadStudents();
+      await showAvailable();
+      setStatus("Student removed successfully", "success");
+    } catch (err) {
+      setStatus("Could not remove student", "danger");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  document.addEventListener("click", (e) => {
+    const addBtn = e.target.closest(".btn-add");
+    const remBtn = e.target.closest(".btn-remove");
+
+    if (addBtn) {
+      const courseId = parseInt(addBtn.dataset.course, 10);
+      const sid = parseInt(addBtn.dataset.student, 10);
+      if (courseId && sid) addStudent(courseId, sid);
+    }
+
+    if (remBtn) {
+      const courseId = parseInt(remBtn.dataset.course, 10);
+      const sid = parseInt(remBtn.dataset.student, 10);
+      if (courseId && sid) removeStudent(courseId, sid);
+    }
+  });
+
+  btnLoad.addEventListener("click", loadStudents);
+  btnAdd.addEventListener("click", showAvailable);
+</script>
+{% endblock %}

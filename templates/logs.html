@@ -1,0 +1,69 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h3 class="mb-4 text-center" data-i18n="logs.title"></h3>
+
+  {% if logs %}
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover text-center align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>#</th>
+            <th data-i18n="logs.name"></th>
+            <th data-i18n="logs.event"></th>
+            <th data-i18n="logs.time"></th>
+            <th data-i18n="logs.image"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for id, timestamp, name, result, score, image_path in logs %}
+          <tr>
+            <td>{{ id }}</td>
+            <td>{{ name }}</td>
+            <td>
+              {% if result == "login" %}
+                <span class="badge bg-success" data-i18n="logs.login_badge"></span>
+              {% elif result == "logout" %}
+                <span class="badge bg-danger" data-i18n="logs.logout_badge"></span>
+              {% else %}
+                <span class="badge bg-secondary">{{ result }}</span>
+              {% endif %}
+            </td>
+            <td>{{ timestamp }}</td>
+            <td>
+              {% if image_path %}
+                <a href="{{ image_path }}" target="_blank" rel="noopener">
+                  <img
+                    src="{{ image_path }}"
+                    width="80"
+                    class="rounded border"
+                    loading="lazy"
+                    decoding="async"
+                    data-i18n-attr="alt:logs.snapshot_alt"
+                  >
+                </a>
+              {% else %}
+                <span class="text-muted" data-i18n="logs.no_image"></span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-center text-muted" data-i18n="logs.none"></p>
+  {% endif %}
+
+  <div class="text-center mt-4 d-flex justify-content-center gap-2 flex-wrap">
+    <form method="post"
+          action="{{ url_for('clear_logs_route') }}"
+          onsubmit="return confirm(window.t ? window.t('logs.confirm_clear') : 'Clear all logs?');"
+          style="display:inline;">
+      <button type="submit" class="btn btn-danger" data-i18n="logs.clear_all"></button>
+    </form>
+
+    <a href="{{ url_for('index') }}" class="btn btn-secondary" data-i18n="logs.back_home"></a>
+  </div>
+</div>
+{% endblock %}
